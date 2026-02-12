@@ -37,10 +37,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/akis-platform/piri"
-Documentation = "https://github.com/akis-platform/piri#readme"
-Repository = "https://github.com/akis-platform/piri"
-Issues = "https://github.com/akis-platform/piri/issues"
+Homepage = "https://github.com/OmerYasirOnal/piri"
+Documentation = "https://github.com/OmerYasirOnal/piri#readme"
+Repository = "https://github.com/OmerYasirOnal/piri"
+Issues = "https://github.com/OmerYasirOnal/piri/issues"
 
 [tool.setuptools.packages.find]
 include = ["piri*"]

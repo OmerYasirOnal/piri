@@ -49,7 +49,7 @@
 
 ```bash
 # Repo'yu klonla
-git clone https://github.com/akis-platform/piri.git
+git clone https://github.com/OmerYasirOnal/piri.git
 cd piri
 
 # Sanal ortam oluştur
