@@ -1,15 +1,12 @@
-# main.py — Piri API Server v2
+# main.py — Piri API Server v3
 """
 Piri — Lightweight LLM + RAG Engine by AKIS Platform
 
-v2: Gelişmiş kalite — multilingual embedding, reranking,
-    OpenAI backend, prompt engineering, post-processing.
+v3: Akıllı routing, web search fallback, relevance filtering,
+    premium UI, aggressive answer cleaning.
 
 Kullanım:
     uvicorn main:app --host 0.0.0.0 --port 8000
-
-    # OpenAI backend ile (çok daha kaliteli):
-    # .env dosyasına OPENAI_API_KEY=sk-... ekleyin
 """
 import os
 import tempfile
@@ -29,10 +26,10 @@ from typing import Optional
 # ─── App ──────────────────────────────────────────────────────
 app = FastAPI(
     title="Piri — AKIS Platform LLM + RAG Engine",
-    version="2.0.0",
+    version="3.0.0",
     description=(
-        "Piri v2: Bilgi denizinde harita çıkaran yapay zeka motoru. "
-        "Multilingual embedding, cross-encoder reranking, OpenAI backend desteği. "
+        "Piri v3: Akıllı RAG + Web Search motoru. "
+        "Relevance filtering, auto-web fallback, premium UI. "
         "AKIS Platform tarafından geliştirilmiştir."
     ),
 )
@@ -124,7 +121,7 @@ def root():
 def api_info():
     return {
         "engine": "Piri",
-        "version": "2.0.0",
+        "version": "3.0.0",
         "by": "AKIS Platform",
         "model": piri_engine.model_name if piri_engine else "yüklenmedi",
         "backend": piri_engine.backend_type if piri_engine else "yok",
@@ -243,7 +240,7 @@ def rag_evaluate(request: EvaluateRequest):
         "report": evaluation["report"],
         "model": piri_engine.model_name,
         "backend": piri_engine.backend_type,
-        "engine": "Piri v2",
+        "engine": "Piri v3",
     }
 
 

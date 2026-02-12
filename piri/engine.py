@@ -1,16 +1,16 @@
 """
-Piri Engine — Gelişmiş RAG Orkestrasyon Modülü (v2)
+Piri Engine — Akıllı RAG Orkestrasyon Modülü (v3)
 
-İyileştirmeler:
-1. Multilingual embedding (intfloat/multilingual-e5-small)
-2. Cross-encoder reranking (mmarco-mMiniLMv2)
-3. Gelişmiş prompt engineering (model boyutuna uygun)
-4. Post-processing (cümle temizleme, tekrar kaldırma)
+v3 İyileştirmeler:
+1. Relevance threshold — alakasız chunk filtresi
+2. Auto web-search fallback — bilgi yoksa internetten öğren
+3. Smart query routing — RAG → Web → Dürüst cevap
+4. Multilingual embedding + Cross-encoder reranking
 5. OpenAI API backend desteği (opsiyonel)
 """
 import os
 import re
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 from transformers import pipeline as hf_pipeline, AutoTokenizer
 
 from .embedder import Embedder
@@ -22,6 +22,11 @@ from .chunker import load_all_documents, chunk_documents
 # ─── Model Ayarları ───────────────────────────────────────────
 DEFAULT_MODEL = "Qwen/Qwen2.5-0.5B-Instruct"
 LOCAL_MODEL_PATH = "./model"
+
+# ─── Relevance Threshold ─────────────────────────────────────
+# Reranker skoru bu değerin altındaysa bilgi tabanında alakalı içerik YOK demek.
+# Cross-encoder skorları: >2 çok iyi, 0-2 orta, <0 alakasız
+RELEVANCE_THRESHOLD = 0.0
 
 
 # ─── Prompt'lar — OpenAI için (detaylı, kapsamlı) ────────────
@@ -60,88 +65,121 @@ def resolve_model_path(model_path: str) -> str:
 
 # ─── Extractive Fallback ─────────────────────────────────────
 
+def _clean_line(line: str) -> str:
+    """Tek bir satırdan metadata/artifact temizler."""
+    # URL'leri kaldır
+    line = re.sub(r'https?://\S+', '', line)
+    # Markdown başlıklarını kaldır
+    line = re.sub(r'^#{1,4}\s+', '', line)
+    # [1], [2] gibi referans numaralarını kaldır
+    line = re.sub(r'\[(\d+)\]\s*', '', line)
+    # Parantez içindeki URL'leri kaldır
+    line = re.sub(r'\([^)]*https?://[^)]*\)', '', line)
+    return line.strip()
+
+
+def _is_junk(line: str) -> bool:
+    """Bu satır metadata/çöp mü?"""
+    low = line.lower().strip()
+    # Çok kısa
+    if len(low) < 15:
+        return True
+    # Metadata kalıpları
+    junk = [
+        'web araması:', 'kaynak:', 'tarih:', '```', '---',
+        'http://', 'https://', '## [', 'source:', 'date:',
+    ]
+    if any(low.startswith(j) for j in junk):
+        return True
+    # Tamamen URL olan satır
+    if re.match(r'^[\w\-]+\.\w+\s*$', low):
+        return True
+    # Ağırlıklı İngilizce (Türkçe harfler yoksa ve İngilizce kelimeler çoksa)
+    tr_chars = set('çğıöşüÇĞİÖŞÜ')
+    en_markers = {'the', 'and', 'for', 'with', 'you', 'are', 'that', 'this', 'from', 'have'}
+    words = low.split()
+    if len(words) > 5:
+        has_tr = any(c in line for c in tr_chars)
+        en_count = sum(1 for w in words if w in en_markers)
+        if not has_tr and en_count >= 3:
+            return True
+    return False
+
+
 def extract_best_answer(context: str, question: str) -> str:
     """
-    Model kötü cevap ürettiğinde, bağlamdan en alakalı paragrafları çeker.
-    Bu, 0.5B gibi küçük modeller için extractive-hybrid fallback'tir.
-
-    Strateji: Soru kelimelerini bağlamda ara, en alakalı paragrafları
-    birleştirerek temiz bir cevap oluştur.
+    v3: Bağlamdan en alakalı cümleleri çıkarır. Agresif temizlik.
+    Metadata, URL, İngilizce, tekrar = hepsi filtrelenir.
     """
     if not context:
         return ""
 
-    # Context'i anlamlı paragraflara böl (--- ayracı ve \n\n kullan)
-    raw_blocks = re.split(r'\n---\n|\n\n', context)
-    paragraphs = [p.strip() for p in raw_blocks if p.strip() and len(p.strip()) > 30]
+    # Satır bazlı böl ve temizle
+    raw_lines = re.split(r'\n---\n|\n\n|\n', context)
+    sentences = []
+    seen = set()
+    for line in raw_lines:
+        line = _clean_line(line)
+        if not line or _is_junk(line):
+            continue
+        # Tekrar kontrolü
+        norm = re.sub(r'\s+', ' ', line.lower())[:80]
+        if norm in seen:
+            continue
+        seen.add(norm)
+        sentences.append(line)
 
-    if not paragraphs:
-        # Satır bazlı dene
-        paragraphs = [p.strip() for p in context.split("\n") if p.strip() and len(p.strip()) > 30]
+    if not sentences:
+        return ""
 
-    if not paragraphs:
-        return context[:1500]
-
-    # Soru kelimelerini çıkar (stopword'ler hariç)
+    # Soru kelimelerini çıkar
     stopwords = {
         "ne", "nasıl", "nedir", "ve", "ile", "bir", "bu", "da", "de",
         "mi", "mı", "için", "olan", "var", "mı", "mu", "mü", "dir",
         "ise", "olarak", "gibi", "kadar", "daha", "en", "çok", "her",
+        "hakkında", "bilgi", "ver", "neler", "hangi", "neden", "kim",
+        "kaç", "oldu", "olan", "yaşında", "öldü",
     }
     q_words = set()
     for w in question.lower().split():
-        clean_w = re.sub(r'[^\wçğıöşü]', '', w)
-        if clean_w not in stopwords and len(clean_w) > 2:
-            q_words.add(clean_w)
+        cw = re.sub(r'[^\wçğıöşü]', '', w)
+        if cw not in stopwords and len(cw) > 2:
+            q_words.add(cw)
 
-    # Paragrafları puanla
+    # Cümleleri puanla
     scored = []
-    for p in paragraphs:
-        p_lower = p.lower()
-        score = 0
-
-        # Soru kelime eşleşmesi (kısmi eşleşme de sayılır)
+    for s in sentences:
+        s_low = s.lower()
+        sc = 0
+        matched = 0
         for w in q_words:
-            if w in p_lower:
-                score += 2
-            elif any(w[:4] in pw for pw in p_lower.split() if len(pw) > 3):
-                score += 1  # Kök eşleşmesi
+            if w in s_low:
+                sc += 3; matched += 1
+            elif len(w) > 3 and any(w[:4] in pw for pw in s_low.split() if len(pw) > 3):
+                sc += 1; matched += 1
+        if q_words and matched / len(q_words) > 0.5:
+            sc += 3
+        # Bilgi yoğunluğu
+        if len(s) > 80: sc += 1
+        if '.' in s: sc += 0.5
+        scored.append((sc, s))
 
-        # Bilgi yoğunluğu bonusu
-        if len(p) > 80:
-            score += 1
-        if any(c in p for c in ".;:"):
-            score += 0.5
-        # Başlık paragraflarını tercih etme
-        if p.startswith("#"):
-            score -= 0.5
-        # Numaralı liste = yapılandırılmış bilgi
-        if re.match(r'^\d+\.', p):
-            score += 0.5
-
-        scored.append((score, p))
-
-    # Sırala ve en iyi paragrafları al
     scored.sort(key=lambda x: x[0], reverse=True)
-    best = [p for s, p in scored if s > 0][:5]
 
+    # En iyi 2 cümle, skor > 0 olanlar
+    best = [s for sc, s in scored if sc > 0][:2]
     if not best:
-        best = [p for _, p in scored[:3]]
+        best = [scored[0][1]] if scored else []
 
-    # Temiz formatlama
     result = "\n\n".join(best)
 
-    # Çok uzunsa kısalt (cümle sınırında)
-    if len(result) > 2000:
-        last_punct = -1
-        for punct in ".!?":
-            pos = result[:2000].rfind(punct)
-            if pos > last_punct:
-                last_punct = pos
-        if last_punct > 500:
-            result = result[:last_punct + 1]
-        else:
-            result = result[:2000]
+    # 800 karakterde cümle sınırında kes
+    if len(result) > 800:
+        for p in ".!?":
+            pos = result[:800].rfind(p)
+            if pos > 200:
+                result = result[:pos + 1]
+                break
 
     return result.strip()
 
@@ -496,68 +534,158 @@ class PiriEngine:
             "source": source_name,
         }
 
+    def _check_relevance(self, chunks: List[Dict]) -> bool:
+        """
+        Retrieval sonuçlarının gerçekten alakalı olup olmadığını kontrol eder.
+        En iyi chunk'ın skoru RELEVANCE_THRESHOLD altındaysa → alakasız.
+        """
+        if not chunks:
+            return False
+        best_score = max(c.get("score", -999) for c in chunks)
+        return best_score >= RELEVANCE_THRESHOLD
+
+    def _filter_relevant_chunks(self, chunks: List[Dict]) -> List[Dict]:
+        """Sadece threshold üstü skorlu chunk'ları döndürür."""
+        return [c for c in chunks if c.get("score", -999) >= RELEVANCE_THRESHOLD]
+
     def query(
         self,
         question: str,
         top_k: int = 3,
         max_new_tokens: int = 300,
         temperature: float = 0.3,
+        auto_web_search: bool = True,
     ) -> Dict:
         """
-        RAG Sorgu — backend'e göre strateji seçer:
+        Akıllı RAG Sorgu — 3 aşamalı pipeline:
 
-        OpenAI backend: Retrieve → Rerank → Augment → Generate (tam RAG)
-        Local backend:  Retrieve → Rerank → Extractive (bilgi tabanından direkt cevap)
+        Aşama 1: RAG → Bilgi tabanında ara. Alakalı sonuç varsa cevapla.
+        Aşama 2: Web → Bilgi yoksa otomatik web araması yap, öğren, tekrar sor.
+        Aşama 3: Dürüst → Hiçbir yerde bulamazsa "bilmiyorum" de.
 
-        0.5B local model Türkçe üretimde zayıf olduğu için,
-        RAG sorgularında bilgi tabanındaki bilgiyi doğrudan gösterir.
-        Bu yaklaşım %100 doğru bilgi garanti eder (halüsinasyon YOK).
+        Artık ASLA alakasız chunk döndürmez. Negatif skorlu sonuçları filtreler.
         """
         rag_prompt, simple_prompt = self._get_prompts()
 
-        # 1. Retrieve + Rerank
+        # ── Aşama 1: RAG Retrieval ──────────────────
         retrieval = self.retriever.build_context(question, top_k=top_k, max_context_chars=4000)
+        chunks = retrieval.get("chunks", [])
+        is_relevant = self._check_relevance(chunks)
 
-        if not retrieval["context"]:
-            # Bağlam bulunamadı — modele sor
-            messages = [
-                {"role": "system", "content": simple_prompt},
-                {"role": "user", "content": question},
-            ]
-            raw = self.backend.generate(messages=messages, max_tokens=max_new_tokens, temperature=temperature)
-            answer = clean_response(raw)
-        elif self.backend_type == "openai":
-            # OpenAI: Tam generative RAG
-            messages = [
-                {"role": "system", "content": rag_prompt},
-                {"role": "user", "content": (
-                    f"Aşağıdaki bağlam bilgisini kullanarak soruyu Türkçe yanıtla.\n\n"
-                    f"## Bağlam\n{retrieval['context']}\n\n"
-                    f"## Soru\n{question}"
-                )},
-            ]
-            raw = self.backend.generate(messages=messages, max_tokens=max_new_tokens, temperature=temperature)
-            answer = clean_response(raw)
-        else:
-            # Local model: Extractive RAG — bilgi tabanından direkt cevap
-            # Bu yaklaşım %100 doğru bilgi verir, halüsinasyon olmaz
-            answer = extract_best_answer(retrieval["context"], question)
+        if is_relevant and retrieval["context"]:
+            # Alakalı bilgi bulundu → Cevap üret
+            relevant_chunks = self._filter_relevant_chunks(chunks)
+            
+            if self.backend_type == "openai":
+                # OpenAI: Tam generative RAG
+                messages = [
+                    {"role": "system", "content": rag_prompt},
+                    {"role": "user", "content": (
+                        f"Aşağıdaki bağlam bilgisini kullanarak soruyu Türkçe yanıtla.\n\n"
+                        f"## Bağlam\n{retrieval['context']}\n\n"
+                        f"## Soru\n{question}"
+                    )},
+                ]
+                raw = self.backend.generate(messages=messages, max_tokens=max_new_tokens, temperature=temperature)
+                answer = clean_response(raw)
+            else:
+                # Local model: Extractive RAG — doğrudan bilgi tabanından
+                # Sadece alakalı chunk'ların metinlerini kullan
+                relevant_text = "\n\n---\n\n".join(c["text"] for c in relevant_chunks) if relevant_chunks else retrieval["context"]
+                answer = extract_best_answer(relevant_text, question)
 
+            return self._build_response(
+                answer=answer,
+                retrieval=retrieval,
+                top_k=top_k,
+                method="rag",
+            )
+
+        # ── Aşama 2: Otomatik Web Arama → Öğren → Tekrar Sor ──
+        if auto_web_search:
+            print(f"[Piri] RAG'da alakalı bilgi bulunamadı (en iyi skor: {max((c.get('score', -999) for c in chunks), default=-999):.2f}). Web araması yapılıyor...")
+            web_result = self._auto_web_search(question)
+            if web_result:
+                return web_result
+
+        # ── Aşama 3: Dürüst Cevap ──────────────────
+        return self._build_response(
+            answer=f"Bu konuda bilgi tabanımda ve web'de yeterli bilgi bulamadım. "
+                   f"Lütfen sorunuzu farklı kelimelerle deneyin veya 'Web Ara' sekmesinden "
+                   f"manuel olarak arama yapabilirsiniz.",
+            retrieval={"context": "", "sources": [], "chunks": [], "num_retrieved": 0},
+            top_k=top_k,
+            method="no_info",
+        )
+
+    def _auto_web_search(self, question: str) -> Optional[Dict]:
+        """
+        Otomatik web araması yapar, öğrenir ve tekrar sorgular.
+        Hata durumunda None döner.
+        """
+        try:
+            from .web_search import search_and_compile
+            
+            search_result = search_and_compile(query=question, max_results=5)
+            if not search_result["results"] or not search_result["compiled_text"]:
+                return None
+
+            # Öğren
+            learn_result = self.learn_text(
+                text=search_result["compiled_text"],
+                source_name=search_result["source_name"],
+                chunk_size=512,
+            )
+
+            if learn_result["chunks_added"] == 0:
+                return None
+
+            print(f"[Piri] Web'den {learn_result['chunks_added']} chunk öğrenildi. Tekrar sorguluyorum...")
+
+            # Tekrar RAG sorgusu (ama bu sefer auto_web_search=False → sonsuz döngü engelle)
+            result = self.query(question, top_k=3, auto_web_search=False)
+            
+            # Web arama bilgilerini ekle
+            result["web_searched"] = True
+            result["web_results"] = [
+                {
+                    "title": r["title"],
+                    "url": r["url"],
+                    "snippet": r["body"][:200],
+                    "source": r["source"],
+                }
+                for r in search_result["results"][:5]
+            ]
+            result["chunks_learned"] = learn_result["chunks_added"]
+            result["method"] = "auto_web"
+            return result
+
+        except Exception as e:
+            print(f"[Piri] Web arama hatası: {e}")
+            return None
+
+    def _build_response(self, answer: str, retrieval: Dict, top_k: int, method: str = "rag") -> Dict:
+        """Standart response formatı oluşturur. Sadece alakalı kaynakları döndürür."""
+        chunks = retrieval.get("chunks", [])
+        # Sadece pozitif skorlu chunk'ları göster
+        good_chunks = [c for c in chunks if c.get("score", -999) >= RELEVANCE_THRESHOLD]
+        good_sources = list(dict.fromkeys(c["source"] for c in good_chunks))
         return {
             "answer": answer,
-            "sources": retrieval["sources"],
+            "sources": good_sources if good_sources else retrieval.get("sources", [])[:1],
             "context_preview": (
                 retrieval["context"][:500] + "..."
-                if len(retrieval["context"]) > 500
-                else retrieval["context"]
+                if retrieval.get("context") and len(retrieval["context"]) > 500
+                else retrieval.get("context", "")
             ),
-            "num_sources": retrieval["num_retrieved"],
+            "num_sources": len(good_chunks),
             "retrieval_scores": [
-                {"source": c["source"], "score": round(c.get("score", 0.0), 4)}
-                for c in retrieval["chunks"][:top_k]
+                {"source": c["source"], "score": round(c.get("score", 0.0), 2)}
+                for c in good_chunks[:top_k]
             ],
             "model": self.model_name,
             "backend": self.backend_type,
+            "method": method,
         }
 
     def search_only(self, query: str, top_k: int = 5) -> Dict:
@@ -582,9 +710,49 @@ class PiriEngine:
         max_new_tokens: int = 200,
         temperature: float = 0.7,
     ) -> Dict:
-        """Serbest metin üretimi (RAG olmadan)."""
+        """
+        Serbest metin üretimi.
+        Local model çok kötü Türkçe ürettiği için akıllı yönlendirme:
+        1. Basit selamlaşmalar → hazır Türkçe cevap
+        2. Bilgi sorusu → RAG'a yönlendir, bulamazsa web'de ara
+        3. Gerçek üretim → modele sor (sadece OpenAI backend'de güvenilir)
+        """
+        prompt_lower = prompt.lower().strip()
+        
+        # Basit selamlaşmalar — local model bile bunları bozmasın
+        greetings = {
+            "selam": "Selam! Ben Piri, AKIS Platform'un yapay zeka asistanıyım. Size nasıl yardımcı olabilirim?",
+            "merhaba": "Merhaba! Ben Piri. Bana bir soru sorabilir, web'de arama yapabilir veya dosya yükleyerek yeni bilgiler öğretebilirsiniz.",
+            "naber": "İyiyim, teşekkürler! Ben Piri, bilgi denizinde harita çıkaran yapay zeka. Size nasıl yardımcı olabilirim?",
+            "nasılsın": "Teşekkürler, iyiyim! Ben Piri, AKIS Platform asistanıyım. Size nasıl yardımcı olabilirim?",
+            "hey": "Hey! Ben Piri. Sormak istediğiniz bir şey var mı?",
+            "sa": "Aleyküm selam! Ben Piri, size nasıl yardımcı olabilirim?",
+            "slm": "Selam! Ben Piri, AKIS Platform asistanıyım. Buyurun, nasıl yardımcı olabilirim?",
+        }
+        
+        for key, response in greetings.items():
+            if prompt_lower in (key, key + ".", key + "!") or prompt_lower.startswith(key + " "):
+                return {"text": response, "model": self.model_name, "backend": self.backend_type, "engine": "Piri", "method": "greeting"}
+        
+        # Bilgi sorusu algılama — RAG'a yönlendir
+        info_keywords = ["nedir", "nasıl", "ne zaman", "nerede", "kimdir", "kaç", "hakkında", "anlat", "açıkla", "bilgi"]
+        is_info_question = any(kw in prompt_lower for kw in info_keywords)
+        
+        if is_info_question and self.store.total_chunks > 0:
+            # RAG pipeline'a yönlendir (web arama dahil)
+            rag_result = self.query(prompt, top_k=3, auto_web_search=True)
+            if rag_result.get("method") != "no_info":
+                return {
+                    "text": rag_result["answer"],
+                    "model": self.model_name,
+                    "backend": self.backend_type,
+                    "engine": "Piri",
+                    "method": "rag_redirect",
+                    "sources": rag_result.get("sources", []),
+                }
+        
+        # Gerçek üretim — modele sor
         _, simple_prompt = self._get_prompts()
-
         messages = [
             {"role": "system", "content": simple_prompt},
             {"role": "user", "content": prompt},
@@ -595,19 +763,29 @@ class PiriEngine:
             temperature=temperature,
         )
         answer = clean_response(raw, aggressive=False)
-
+        
+        # Local model çıktı kalite kontrolü
+        if self.backend.is_local and answer:
+            # Saçmalık tespiti: çok kısa, tekrarlayan veya anlamsız
+            words = answer.split()
+            if len(words) < 3:
+                answer = f"Bu konuda yeterli bilgi üretemiyorum. 'Soru' sekmesinden RAG ile sorabilir veya 'Web Ara' ile internetten araştırabilirim."
+            elif len(set(words)) / max(len(words), 1) < 0.3:
+                answer = f"Bu konuda net bir cevap üretemiyorum. Lütfen 'Web Ara' sekmesinden araştırmamı isteyin."
+        
         return {
             "text": answer,
             "model": self.model_name,
             "backend": self.backend_type,
             "engine": "Piri",
+            "method": "generate",
         }
 
     def get_stats(self) -> Dict:
         """Sistem istatistikleri."""
         return {
             "engine": "Piri",
-            "version": "2.0.0",
+            "version": "3.0.0",
             "model": self.model_name,
             "backend": self.backend_type,
             "total_chunks": self.store.total_chunks,

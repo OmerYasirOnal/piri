@@ -207,7 +207,7 @@ def main():
             print("\n" + "=" * 60)
             print("  PIRI — GENEL ÖZET")
             print("=" * 60)
-            print(f"  Engine:             Piri v1.0.0")
+            print(f"  Engine:             Piri v3.0.0")
             print(f"  Model:              {summary['model']}")
             print(f"  Toplam soru:        {summary['total_questions']}")
             print(f"  Ortalama skor:      {summary['overall_mean']:.2f}")
