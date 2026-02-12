@@ -1,0 +1,40 @@
+# Piri — .gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual Environment
+venv/
+.venv/
+env/
+
+# Model files (too large for git)
+model/
+*.safetensors
+*.bin
+*.pth
+
+# Vector store (regeneratable)
+vector_store/
+*.faiss
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.local
