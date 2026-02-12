@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Piri — AKIS Platform</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0a0e17;
+      --bg-card:   #111827;
+      --bg-input:  #1a2234;
+      --border:    #1e2a3e;
+      --text:      #e2e8f0;
+      --text-dim:  #8896ab;
+      --accent:    #3b82f6;
+      --accent2:   #06b6d4;
+      --green:     #10b981;
+      --orange:    #f59e0b;
+      --red:       #ef4444;
+      --purple:    #8b5cf6;
+      --gold:      #d4a053;
+      --radius:    12px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ─── Split Layout ──────────────────────── */
+    .app {
+      display: flex;
+      height: 100vh;
+    }
+
+    /* ─── Left Panel (Input) ────────────────── */
+    .left-panel {
+      width: 420px;
+      min-width: 380px;
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      background: var(--bg-card);
+      overflow-y: auto;
+    }
+
+    .left-header {
+      padding: 20px 20px 16px;
+      border-bottom: 1px solid var(--border);
+      text-align: center;
+    }
+
+    .logo { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 8px; }
+    .logo-icon {
+      width: 40px; height: 40px;
+      background: linear-gradient(135deg, var(--gold), #b8860b);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px;
+      box-shadow: 0 2px 10px rgba(212,160,83,.25);
+    }
+    .logo h1 {
+      font-size: 28px; font-weight: 700;
+      background: linear-gradient(135deg, #f0d68a, var(--gold));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+
+    .stats-row {
+      display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin-top: 10px;
+    }
+    .stat-pill {
+      padding: 4px 10px; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 16px; font-size: 11px; color: var(--accent2); font-weight: 600;
+    }
+
+    /* ─── Tabs ──────────────────────────────── */
+    .tabs {
+      display: flex; flex-wrap: wrap; gap: 2px; padding: 8px 12px;
+      border-bottom: 1px solid var(--border); background: var(--bg);
+    }
+    .tab-btn {
+      flex: 1; padding: 8px 6px; background: transparent; border: none;
+      border-radius: 6px; color: var(--text-dim); font-size: 11px;
+      font-weight: 600; cursor: pointer; transition: all .2s; text-align: center;
+      min-width: 60px;
+    }
+    .tab-btn:hover { color: var(--text); background: rgba(255,255,255,.04); }
+    .tab-btn.active { background: var(--accent); color: #fff; }
+
+    /* ─── Tab Panels ────────────────────────── */
+    .tab-content { flex: 1; overflow-y: auto; padding: 16px; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    .input-group { margin-bottom: 14px; }
+    .input-group label {
+      display: block; font-size: 11px; color: var(--text-dim);
+      margin-bottom: 4px; text-transform: uppercase; letter-spacing: .5px;
+    }
+    textarea, input[type="text"], input[type="number"] {
+      width: 100%; padding: 10px 12px; background: var(--bg-input);
+      border: 1px solid var(--border); border-radius: 8px;
+      color: var(--text); font-size: 13px; font-family: inherit; resize: vertical;
+    }
+    textarea:focus, input:focus { outline: none; border-color: var(--accent); }
+
+    .row { display: flex; gap: 8px; }
+    .row > * { flex: 1; }
+
+    .btn {
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      padding: 11px 16px; border: none; border-radius: 8px;
+      font-size: 13px; font-weight: 600; cursor: pointer; width: 100%;
+      transition: all .2s;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+    .btn-blue { background: linear-gradient(135deg, var(--accent), #2563eb); color: #fff; }
+    .btn-cyan { background: linear-gradient(135deg, var(--accent2), #0891b2); color: #fff; }
+    .btn-green { background: linear-gradient(135deg, var(--green), #059669); color: #fff; }
+    .btn-gold { background: linear-gradient(135deg, var(--gold), #b8860b); color: #fff; }
+    .btn-purple { background: linear-gradient(135deg, var(--purple), #7c3aed); color: #fff; }
+
+    .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 50%; animation: spin .6s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ─── Right Panel (Chat) ────────────────── */
+    .right-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg);
+    }
+
+    .chat-header {
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 12px;
+      background: var(--bg-card);
+    }
+
+    /* ─── Piri Avatar ───────────────────────── */
+    .piri-avatar {
+      width: 48px; height: 48px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, #f0d68a, var(--gold), #8b6914);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 24px;
+      position: relative;
+      box-shadow: 0 0 20px rgba(212,160,83,.3), 0 0 40px rgba(212,160,83,.1);
+      animation: avatarPulse 3s ease-in-out infinite;
+    }
+    .piri-avatar::after {
+      content: '';
+      position: absolute;
+      inset: -4px;
+      border-radius: 50%;
+      border: 2px solid rgba(212,160,83,.3);
+      animation: avatarRing 3s ease-in-out infinite;
+    }
+    @keyframes avatarPulse {
+      0%, 100% { box-shadow: 0 0 20px rgba(212,160,83,.3), 0 0 40px rgba(212,160,83,.1); }
+      50% { box-shadow: 0 0 30px rgba(212,160,83,.5), 0 0 60px rgba(212,160,83,.2); }
+    }
+    @keyframes avatarRing {
+      0%, 100% { transform: scale(1); opacity: .5; }
+      50% { transform: scale(1.1); opacity: 1; }
+    }
+    .piri-avatar.thinking { animation: avatarThink .8s ease-in-out infinite; }
+    @keyframes avatarThink {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.08); }
+    }
+
+    .chat-title { font-size: 16px; font-weight: 600; }
+    .chat-subtitle { font-size: 12px; color: var(--text-dim); }
+
+    /* ─── Chat Messages ─────────────────────── */
+    .chat-body {
+      flex: 1; overflow-y: auto; padding: 24px;
+      display: flex; flex-direction: column; gap: 16px;
+    }
+
+    .chat-empty {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 16px;
+      color: var(--text-dim); text-align: center;
+    }
+    .chat-empty .big-icon { font-size: 64px; opacity: .3; }
+    .chat-empty p { max-width: 300px; font-size: 14px; }
+
+    .msg {
+      max-width: 100%;
+      animation: msgIn .3s ease-out;
+    }
+    @keyframes msgIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .msg-piri {
+      display: flex; gap: 12px; align-items: flex-start;
+    }
+    .msg-avatar {
+      width: 32px; height: 32px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--gold), #8b6914);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; flex-shrink: 0; margin-top: 4px;
+    }
+    .msg-bubble {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      flex: 1;
+      line-height: 1.7;
+      font-size: 14px;
+    }
+    .msg-bubble h3 { font-size: 15px; color: var(--accent2); margin-bottom: 8px; }
+    .msg-bubble p { margin-bottom: 8px; }
+    .msg-bubble ul, .msg-bubble ol { margin: 8px 0; padding-left: 20px; }
+    .msg-bubble li { margin-bottom: 4px; }
+    .msg-bubble .highlight {
+      background: rgba(59,130,246,.1); border-left: 3px solid var(--accent);
+      padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 10px 0;
+      font-size: 13px;
+    }
+
+    .msg-meta {
+      display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px;
+    }
+    .tag {
+      padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 600;
+    }
+    .tag-source { background: rgba(59,130,246,.1); color: var(--accent); border: 1px solid rgba(59,130,246,.2); }
+    .tag-score { background: rgba(16,185,129,.1); color: var(--green); border: 1px solid rgba(16,185,129,.2); }
+    .tag-time { background: var(--bg-input); color: var(--text-dim); border: 1px solid var(--border); }
+    .tag-web { background: rgba(6,182,212,.1); color: var(--accent2); border: 1px solid rgba(6,182,212,.2); }
+    .tag-learn { background: rgba(16,185,129,.1); color: var(--green); border: 1px solid rgba(16,185,129,.2); }
+
+    .web-card {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+      padding: 10px 14px; margin-top: 8px; border-left: 3px solid var(--accent2);
+    }
+    .web-card a { color: var(--accent2); text-decoration: none; font-weight: 600; font-size: 13px; }
+    .web-card a:hover { text-decoration: underline; }
+    .web-card .domain { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+    .web-card .snippet { font-size: 12px; color: var(--text-dim); margin-top: 4px; line-height: 1.5; }
+
+    /* Metric bars */
+    .metric-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+    .metric-label { width: 110px; font-size: 12px; flex-shrink: 0; }
+    .metric-bar-bg { flex: 1; height: 6px; background: var(--bg-input); border-radius: 3px; overflow: hidden; }
+    .metric-bar { height: 100%; border-radius: 3px; transition: width .6s; }
+    .metric-val { width: 40px; text-align: right; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+
+    /* ─── Responsive ────────────────────────── */
+    @media (max-width: 800px) {
+      .app { flex-direction: column; }
+      .left-panel { width: 100%; min-width: 0; max-height: 50vh; border-right: none; border-bottom: 1px solid var(--border); }
+    }
+
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #2a3a54; border-radius: 3px; }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ═══ LEFT PANEL ═══════════════════════════ -->
+  <div class="left-panel">
+    <div class="left-header">
+      <div class="logo">
+        <div class="logo-icon">&#x1F5FA;</div>
+        <h1>Piri</h1>
+      </div>
+      <div style="font-size:12px;color:var(--text-dim);font-style:italic">Bilgi denizinde harita cikaran yapay zeka</div>
+      <div class="stats-row">
+        <span class="stat-pill" id="stat-chunks">-- chunk</span>
+        <span class="stat-pill" id="stat-backend">yukleniyor</span>
+        <span class="stat-pill" id="stat-version">v2.0</span>
+      </div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="rag">Soru</button>
+      <button class="tab-btn" data-tab="websearch">Web</button>
+      <button class="tab-btn" data-tab="search">Ara</button>
+      <button class="tab-btn" data-tab="learn">Ogret</button>
+      <button class="tab-btn" data-tab="generate">Uret</button>
+      <button class="tab-btn" data-tab="evaluate">Deger.</button>
+    </div>
+
+    <div class="tab-content">
+
+      <!-- TAB: Soru-Cevap -->
+      <div class="tab-panel active" id="panel-rag">
+        <div class="input-group">
+          <label>Sorunuz</label>
+          <textarea id="rag-question" rows="3" placeholder="Piri'ye sormak istediginiz soru..."></textarea>
+        </div>
+        <div class="row">
+          <div class="input-group"><label>Top-K</label><input type="number" id="rag-topk" value="3" min="1" max="10" /></div>
+          <div class="input-group"><label>Tokens</label><input type="number" id="rag-tokens" value="200" min="50" max="500" /></div>
+        </div>
+        <button class="btn btn-blue" id="btn-rag" onclick="runRAG()">&#x1F50D; Piri'ye Sor</button>
+      </div>
+
+      <!-- TAB: Web Ara -->
+      <div class="tab-panel" id="panel-websearch">
+        <div class="input-group">
+          <label>Web Arama</label>
+          <textarea id="ws-query" rows="3" placeholder="Internette ne aramaliyim?"></textarea>
+        </div>
+        <div class="row">
+          <div class="input-group"><label>Sonuc</label><input type="number" id="ws-max" value="5" min="1" max="10" /></div>
+          <div class="input-group" style="display:flex;align-items:flex-end;padding-bottom:14px">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="checkbox" id="ws-autolearn" checked style="accent-color:var(--green)" />
+              <span style="font-size:12px">Ogren</span>
+            </label>
+          </div>
+        </div>
+        <button class="btn btn-cyan" id="btn-ws" onclick="runWebSearch()">&#x1F310; Web'de Ara</button>
+      </div>
+
+      <!-- TAB: Semantik Arama -->
+      <div class="tab-panel" id="panel-search">
+        <div class="input-group">
+          <label>Arama</label>
+          <textarea id="search-query" rows="2" placeholder="Bilgi tabaninda arama..."></textarea>
+        </div>
+        <div class="input-group"><label>Sonuc</label><input type="number" id="search-topk" value="5" min="1" max="20" /></div>
+        <button class="btn btn-green" id="btn-search" onclick="runSearch()">&#x1F50E; Ara</button>
+      </div>
+
+      <!-- TAB: Ogret -->
+      <div class="tab-panel" id="panel-learn">
+        <div style="display:flex;gap:6px;margin-bottom:12px">
+          <button class="btn" id="lm-file" onclick="setLearnMode('file')" style="flex:1;padding:8px;background:var(--accent);color:#fff;font-size:12px;border-radius:6px">Dosya</button>
+          <button class="btn" id="lm-text" onclick="setLearnMode('text')" style="flex:1;padding:8px;background:var(--bg-input);color:var(--text-dim);font-size:12px;border:1px solid var(--border);border-radius:6px">Metin</button>
+        </div>
+        <div id="learn-file-area">
+          <div id="drop-zone" style="border:2px dashed var(--border);border-radius:var(--radius);padding:24px 16px;text-align:center;cursor:pointer;background:var(--bg);margin-bottom:12px">
+            <div style="font-size:32px;margin-bottom:6px">&#x1F4C4;</div>
+            <div style="font-size:13px;font-weight:600">Dosya surukle veya tikla</div>
+            <div style="font-size:11px;color:var(--text-dim)">.txt .md .json .py .csv ...</div>
+            <input type="file" id="file-input" style="display:none" accept=".txt,.md,.csv,.json,.py,.js,.ts,.html,.xml,.yaml,.yml,.log,.rst,.tex,.sql,.sh,.java,.go,.c,.cpp,.css" />
+          </div>
+          <div id="file-preview" style="display:none;margin-bottom:12px">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px">
+              <div><span style="margin-right:6px">&#x1F4CE;</span><strong id="file-name"></strong><span id="file-size" style="color:var(--text-dim);font-size:11px;margin-left:6px"></span></div>
+              <button onclick="clearFile()" style="background:var(--red);color:#fff;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px">X</button>
+            </div>
+          </div>
+        </div>
+        <div id="learn-text-area" style="display:none">
+          <div class="input-group"><label>Metin</label><textarea id="learn-content" rows="6" style="font-family:monospace;font-size:12px" placeholder="Ogretilecek metin..."></textarea></div>
+        </div>
+        <div class="row" style="margin-bottom:12px">
+          <div class="input-group"><label>Kaynak Adi</label><input type="text" id="learn-source" placeholder="ornek: notlar.md" /></div>
+          <div class="input-group"><label>Chunk</label><input type="number" id="learn-chunk" value="512" min="128" max="2048" /></div>
+        </div>
+        <button class="btn btn-green" id="btn-learn" onclick="runLearn()">&#x1F9E0; Ogret</button>
+      </div>
+
+      <!-- TAB: Uret -->
+      <div class="tab-panel" id="panel-generate">
+        <div class="input-group"><label>Prompt</label><textarea id="gen-prompt" rows="4" placeholder="Metin uretmek icin prompt..."></textarea></div>
+        <div class="row">
+          <div class="input-group"><label>Tokens</label><input type="number" id="gen-tokens" value="150" min="20" max="500" /></div>
+          <div class="input-group"><label>Temp</label><input type="number" id="gen-temp" value="0.7" min="0" max="1.5" step="0.1" /></div>
+        </div>
+        <button class="btn btn-gold" id="btn-gen" onclick="runGenerate()">&#x270D;&#xFE0F; Uret</button>
+      </div>
+
+      <!-- TAB: Degerlendir -->
+      <div class="tab-panel" id="panel-evaluate">
+        <div class="input-group"><label>Soru</label><textarea id="eval-question" rows="3" placeholder="Degerlendirmek icin soru..."></textarea></div>
+        <div class="row">
+          <div class="input-group"><label>Top-K</label><input type="number" id="eval-topk" value="3" min="1" max="10" /></div>
+          <div class="input-group"><label>Tokens</label><input type="number" id="eval-tokens" value="150" min="50" max="500" /></div>
+        </div>
+        <button class="btn btn-purple" id="btn-eval" onclick="runEval()">&#x1F4CA; Degerlendir</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══ RIGHT PANEL (Chat) ═══════════════════ -->
+  <div class="right-panel">
+    <div class="chat-header">
+      <div class="piri-avatar" id="piri-avatar">&#x1F5FA;</div>
+      <div>
+        <div class="chat-title">Piri</div>
+        <div class="chat-subtitle" id="chat-status">Hazir &mdash; bir soru sorun veya web'de arayin</div>
+      </div>
+    </div>
+
+    <div class="chat-body" id="chat-body">
+      <div class="chat-empty" id="chat-empty">
+        <div class="big-icon">&#x1F5FA;</div>
+        <p>Soldan bir soru sorun, web'de arayin veya dosya yukleyin.<br>Piri burada cevap verecek.</p>
+        <div style="font-size:12px;font-style:italic;color:#3a4a60">"Haritasi olmayana her ruzgar ters eser."</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const API = '';
+const chatBody = document.getElementById('chat-body');
+const chatEmpty = document.getElementById('chat-empty');
+const avatar = document.getElementById('piri-avatar');
+
+// ── Tabs ──
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('panel-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+// ── Stats ──
+async function loadStats() {
+  try {
+    const r = await fetch(API + '/rag/stats');
+    const d = await r.json();
+    document.getElementById('stat-chunks').textContent = (d.total_chunks || 0) + ' chunk';
+    const model = (d.model || '').split('/').pop();
+    const icon = d.backend === 'openai' ? '⚡' : '🖥️';
+    document.getElementById('stat-backend').textContent = icon + ' ' + model;
+    document.getElementById('stat-version').textContent = 'v' + (d.version || '2.0');
+  } catch(e) {}
+}
+loadStats();
+
+// ── Helpers ──
+function setLoading(id, on) {
+  const b = document.getElementById(id);
+  if (on) { b.disabled = true; b._t = b.innerHTML; b.innerHTML = '<span class="spinner"></span> Dusunuyor...'; avatar.classList.add('thinking'); setStatus('Dusunuyor...'); }
+  else { b.disabled = false; b.innerHTML = b._t; avatar.classList.remove('thinking'); setStatus('Hazir'); }
+}
+function setStatus(t) { document.getElementById('chat-status').textContent = t; }
+
+function addMsg(html) {
+  chatEmpty.style.display = 'none';
+  const div = document.createElement('div');
+  div.className = 'msg msg-piri';
+  div.innerHTML = `<div class="msg-avatar">&#x1F5FA;</div><div class="msg-bubble">${html}</div>`;
+  chatBody.appendChild(div);
+  chatBody.scrollTop = chatBody.scrollHeight;
+}
+
+function formatText(text) {
+  if (!text) return '';
+  return text
+    .replace(/### (.+)/g, '<h3>$1</h3>')
+    .replace(/## (.+)/g, '<h3>$1</h3>')
+    .replace(/# (.+)/g, '<h3>$1</h3>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\n- /g, '\n<li>')
+    .replace(/\n\d+\. /g, '\n<li>')
+    .replace(/\n\n/g, '</p><p>')
+    .replace(/\n/g, '<br>');
+}
+
+function tagsHTML(sources, scores, time, extra) {
+  let h = '<div class="msg-meta">';
+  if (time) h += `<span class="tag tag-time">${time}ms</span>`;
+  if (sources) sources.forEach(s => { h += `<span class="tag tag-source">${s}</span>`; });
+  if (scores) scores.forEach(s => { h += `<span class="tag tag-score">${s.source}: ${s.score}</span>`; });
+  if (extra) h += extra;
+  h += '</div>';
+  return h;
+}
+
+function scoreColor(s) {
+  if (s >= .75) return 'var(--green)';
+  if (s >= .5) return 'var(--accent)';
+  if (s >= .3) return 'var(--orange)';
+  return 'var(--red)';
+}
+
+// ── RAG Query ──
+async function runRAG() {
+  const q = document.getElementById('rag-question').value;
+  if (!q.trim()) return;
+  setLoading('btn-rag', true);
+  const t0 = Date.now();
+  try {
+    const r = await fetch(API + '/rag/query', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ question:q, top_k: +document.getElementById('rag-topk').value, max_new_tokens: +document.getElementById('rag-tokens').value }) });
+    const d = await r.json();
+    const ms = Date.now() - t0;
+    addMsg(`<h3>&#x1F50D; ${q}</h3><p>${formatText(d.answer || d.detail || 'Cevap yok.')}</p>${tagsHTML(d.sources, d.retrieval_scores, ms)}`);
+  } catch(e) { addMsg(`<p style="color:var(--red)">Hata: ${e.message}</p>`); }
+  setLoading('btn-rag', false);
+}
+
+// ── Web Search ──
+async function runWebSearch() {
+  const q = document.getElementById('ws-query').value;
+  if (!q.trim()) return;
+  setLoading('btn-ws', true);
+  setStatus('Web\'de araniyor...');
+  const t0 = Date.now();
+  try {
+    const r = await fetch(API + '/rag/web-search', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ query:q, max_results: +document.getElementById('ws-max').value, auto_learn: document.getElementById('ws-autolearn').checked, top_k:3 }) });
+    const d = await r.json();
+    const ms = Date.now() - t0;
+
+    let html = `<h3>&#x1F310; ${q}</h3>`;
+
+    if (d.learned) {
+      html += `<div class="highlight">&#x2705; <strong>${d.chunks_added} yeni bilgi ogrenildi!</strong> (Toplam: ${d.total_chunks} chunk)</div>`;
+    }
+
+    if (d.answer) {
+      html += `<p>${formatText(d.answer)}</p>`;
+    }
+
+    if (d.web_results && d.web_results.length) {
+      html += `<div style="margin-top:12px;font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Web Kaynaklari</div>`;
+      d.web_results.forEach(w => {
+        html += `<div class="web-card"><a href="${w.url}" target="_blank">${w.title}</a><div class="domain">&#x1F517; ${w.source}</div><div class="snippet">${w.snippet}</div></div>`;
+      });
+    }
+
+    let extra = '';
+    if (d.source_name) extra += `<span class="tag tag-learn">&#x1F4DA; ${d.source_name}</span>`;
+    html += tagsHTML(d.sources, null, ms, extra);
+    addMsg(html);
+    loadStats();
+  } catch(e) { addMsg(`<p style="color:var(--red)">Hata: ${e.message}</p>`); }
+  setLoading('btn-ws', false);
+}
+
+// ── Semantic Search ──
+async function runSearch() {
+  const q = document.getElementById('search-query').value;
+  if (!q.trim()) return;
+  setLoading('btn-search', true);
+  const t0 = Date.now();
+  try {
+    const r = await fetch(API + '/rag/search', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ query:q, top_k: +document.getElementById('search-topk').value }) });
+    const d = await r.json();
+    const ms = Date.now() - t0;
+    let html = `<h3>&#x1F50E; ${q}</h3><div style="font-size:12px;color:var(--text-dim);margin-bottom:8px">${d.total_found} sonuc &middot; ${ms}ms</div>`;
+    if (d.results) d.results.forEach((item,i) => {
+      const c = scoreColor(item.score);
+      html += `<div style="background:var(--bg);border:1px solid var(--border);border-left:3px solid ${c};border-radius:8px;padding:10px 12px;margin-bottom:8px"><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span class="tag tag-source">${item.source}</span><span style="font-size:12px;font-weight:700;color:${c}">${item.score}</span></div><div style="font-size:12px;color:var(--text-dim);line-height:1.5">${item.text}</div></div>`;
+    });
+    addMsg(html);
+  } catch(e) { addMsg(`<p style="color:var(--red)">Hata: ${e.message}</p>`); }
+  setLoading('btn-search', false);
+}
+
+// ── Generate ──
+async function runGenerate() {
+  const p = document.getElementById('gen-prompt').value;
+  if (!p.trim()) return;
+  setLoading('btn-gen', true);
+  const t0 = Date.now();
+  try {
+    const r = await fetch(API + '/generate', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ prompt:p, max_new_tokens: +document.getElementById('gen-tokens').value, temperature: +document.getElementById('gen-temp').value }) });
+    const d = await r.json();
+    const ms = Date.now() - t0;
+    addMsg(`<h3>&#x270D;&#xFE0F; ${p}</h3><p>${formatText(d.text || d.detail || '')}</p><div class="msg-meta"><span class="tag tag-time">${ms}ms</span><span class="tag tag-source">${d.model || ''}</span></div>`);
+  } catch(e) { addMsg(`<p style="color:var(--red)">Hata: ${e.message}</p>`); }
+  setLoading('btn-gen', false);
+}
+
+// ── Evaluate ──
+async function runEval() {
+  const q = document.getElementById('eval-question').value;
+  if (!q.trim()) return;
+  setLoading('btn-eval', true);
+  const t0 = Date.now();
+  try {
+    const r = await fetch(API + '/rag/evaluate', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ question:q, top_k: +document.getElementById('eval-topk').value, max_new_tokens: +document.getElementById('eval-tokens').value }) });
+    const d = await r.json();
+    const ms = Date.now() - t0;
+    const ev = d.evaluation;
+    const sc = ev.overall_score;
+    const col = scoreColor(sc);
+
+    let html = `<h3>&#x1F4CA; ${q}</h3>`;
+    html += `<div style="text-align:center;padding:16px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:12px"><div style="font-size:40px;font-weight:800;color:${col}">${sc.toFixed(2)}</div><div style="font-size:13px;color:${col};font-weight:600">${ev.verdict}</div><div style="margin-top:8px;height:8px;background:var(--bg-input);border-radius:4px;overflow:hidden"><div style="width:${sc*100}%;height:100%;background:${col};border-radius:4px"></div></div></div>`;
+    html += `<div class="highlight">${formatText(d.answer || '')}</div>`;
+
+    const metrics = ev.metrics;
+    const mNames = {faithfulness:'Faithfulness',relevance:'Relevance',context_precision:'Precision',coverage:'Coverage',coherence:'Coherence'};
+    for (const [k,v] of Object.entries(metrics)) {
+      const c2 = scoreColor(v.score);
+      html += `<div class="metric-row"><span class="metric-label">${mNames[k]||k}</span><div class="metric-bar-bg"><div class="metric-bar" style="width:${v.score*100}%;background:${c2}"></div></div><span class="metric-val" style="color:${c2}">${v.score.toFixed(2)}</span></div>`;
+    }
+    html += tagsHTML(d.sources, null, ms);
+    addMsg(html);
+  } catch(e) { addMsg(`<p style="color:var(--red)">Hata: ${e.message}</p>`); }
+  setLoading('btn-eval', false);
+}
+
+// ── Learn ──
+let learnMode = 'file', selectedFile = null;
+function setLearnMode(m) {
+  learnMode = m;
+  const fb = document.getElementById('lm-file'), tb = document.getElementById('lm-text');
+  if (m==='file') { fb.style.background='var(--accent)';fb.style.color='#fff';fb.style.border='none'; tb.style.background='var(--bg-input)';tb.style.color='var(--text-dim)';tb.style.border='1px solid var(--border)'; document.getElementById('learn-file-area').style.display='block'; document.getElementById('learn-text-area').style.display='none'; }
+  else { tb.style.background='var(--accent)';tb.style.color='#fff';tb.style.border='none'; fb.style.background='var(--bg-input)';fb.style.color='var(--text-dim)';fb.style.border='1px solid var(--border)'; document.getElementById('learn-file-area').style.display='none'; document.getElementById('learn-text-area').style.display='block'; }
+}
+
+const dropZone = document.getElementById('drop-zone'), fileInput = document.getElementById('file-input');
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.style.borderColor='var(--accent)'; });
+dropZone.addEventListener('dragleave', () => { dropZone.style.borderColor='var(--border)'; });
+dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.style.borderColor='var(--border)'; if(e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]); });
+fileInput.addEventListener('change', () => { if(fileInput.files.length) handleFile(fileInput.files[0]); });
+
+function handleFile(f) { selectedFile=f; document.getElementById('file-preview').style.display='block'; document.getElementById('drop-zone').style.display='none'; document.getElementById('file-name').textContent=f.name; document.getElementById('file-size').textContent=(f.size/1024).toFixed(1)+'KB'; if(!document.getElementById('learn-source').value) document.getElementById('learn-source').value=f.name; }
+function clearFile() { selectedFile=null; fileInput.value=''; document.getElementById('file-preview').style.display='none'; document.getElementById('drop-zone').style.display='block'; }
+
+async function runLearn() {
+  setLoading('btn-learn', true);
+  const t0 = Date.now();
+  try {
+    let resp;
+    if (learnMode==='file') {
+      if (!selectedFile) { alert('Dosya secin'); setLoading('btn-learn',false); return; }
+      const fd = new FormData(); fd.append('file',selectedFile);
+      const sn = document.getElementById('learn-source').value; if(sn) fd.append('source_name',sn);
+      fd.append('chunk_size', document.getElementById('learn-chunk').value);
+      resp = await fetch(API+'/rag/upload',{method:'POST',body:fd});
+    } else {
+      const txt = document.getElementById('learn-content').value;
+      if (!txt.trim()) { alert('Metin girin'); setLoading('btn-learn',false); return; }
+      resp = await fetch(API+'/rag/learn',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:txt,source_name:document.getElementById('learn-source').value||'metin',chunk_size:+document.getElementById('learn-chunk').value})});
+    }
+    const d = await resp.json();
+    const ms = Date.now()-t0;
+    if (resp.ok) {
+      addMsg(`<h3>&#x1F4DA; Ogrenme Tamamlandi</h3><div class="highlight">&#x2705; <strong>${d.message}</strong><br>${d.chunks_added} chunk eklendi &middot; Toplam: ${d.total_chunks} &middot; ${(d.char_count/1000).toFixed(1)}K karakter</div><div class="msg-meta"><span class="tag tag-time">${ms}ms</span><span class="tag tag-learn">${d.source}</span></div>`);
+      loadStats();
+    } else {
+      addMsg(`<p style="color:var(--red)">&#x274C; ${d.detail||'Hata'}</p>`);
+    }
+  } catch(e) { addMsg(`<p style="color:var(--red)">Hata: ${e.message}</p>`); }
+  setLoading('btn-learn', false);
+}
+</script>
+</body>
+</html>

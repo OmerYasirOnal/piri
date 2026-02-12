@@ -1,44 +1,66 @@
 """
-Piri — Retriever Modülü
-Sorguya en uygun chunk'ları bulur ve bağlam oluşturur.
+Piri — Retriever Modülü (Gelişmiş)
+İki aşamalı retrieval: Bi-encoder → Cross-encoder reranking.
 """
-from typing import List, Dict
+from typing import List, Dict, Optional
 from .embedder import Embedder
 from .vector_store import VectorStore
 
 
 class Retriever:
-    def __init__(self, embedder: Embedder, vector_store: VectorStore):
+    def __init__(
+        self,
+        embedder: Embedder,
+        vector_store: VectorStore,
+        reranker=None,
+    ):
         self.embedder = embedder
         self.store = vector_store
+        self.reranker = reranker
 
     def retrieve(
         self,
         query: str,
         top_k: int = 5,
-        score_threshold: float = 0.15,
+        score_threshold: float = 0.10,
+        use_reranking: bool = True,
     ) -> List[Dict]:
         """
-        Sorguya en benzer chunk'ları döndürür.
+        İki aşamalı retrieval:
+        1. Bi-encoder ile geniş aday listesi getir (top_k * 4)
+        2. Cross-encoder ile rerank et, en iyi top_k'yı döndür
 
         Args:
             query: Kullanıcı sorusu
             top_k: Kaç chunk getirilecek
-            score_threshold: Minimum benzerlik (düşük = geniş, yüksek = dar)
+            score_threshold: Minimum benzerlik
+            use_reranking: Reranking kullanılsın mı
         """
+        # Aşama 1: Geniş aday listesi (reranking için daha fazla getir)
+        candidate_k = top_k * 4 if (self.reranker and use_reranking) else top_k
+        candidate_k = min(candidate_k, self.store.total_chunks)
+
         query_embedding = self.embedder.embed_query(query)
-        results = self.store.search(
+        candidates = self.store.search(
             query_embedding,
-            top_k=top_k,
+            top_k=candidate_k,
             score_threshold=score_threshold,
         )
-        return results
+
+        if not candidates:
+            return []
+
+        # Aşama 2: Cross-encoder reranking
+        if self.reranker and use_reranking and len(candidates) > top_k:
+            return self.reranker.rerank(query, candidates, top_k=top_k)
+
+        return candidates[:top_k]
 
     def build_context(
         self,
         query: str,
         top_k: int = 5,
-        max_context_chars: int = 2000,
+        max_context_chars: int = 4000,
     ) -> Dict:
         """
         Sorgu için zengin bağlam oluşturur.
@@ -69,7 +91,6 @@ class Retriever:
         for chunk in chunks:
             text = chunk["text"]
             if total_chars + len(text) > max_context_chars:
-                # Kalan alanı doldur
                 remaining = max_context_chars - total_chars
                 if remaining > 50:
                     context_parts.append(text[:remaining] + "...")
