@@ -109,6 +109,28 @@ class WebSearchRequest(BaseModel):
 
 # ─── Endpoint'ler ─────────────────────────────────────────────
 
+@app.get("/health")
+def health():
+    """Health check endpoint for Docker/orchestrator probes."""
+    return {
+        "status": "ok",
+        "engine": "Piri",
+        "version": "3.0.0",
+        "rag_ready": bool(piri_engine and piri_engine.store.total_chunks > 0),
+    }
+
+
+@app.get("/health")
+def health():
+    """Health check endpoint for Docker/orchestration."""
+    return {
+        "status": "ok",
+        "engine": "Piri",
+        "version": "3.0.0",
+        "rag_ready": piri_engine is not None and piri_engine.store.total_chunks > 0,
+    }
+
+
 @app.get("/", include_in_schema=False)
 def root():
     index_path = os.path.join(STATIC_DIR, "index.html")

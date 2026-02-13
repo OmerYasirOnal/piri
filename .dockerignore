@@ -1,0 +1,49 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+dist
+build
+.eggs
+
+# Virtual environments
+.venv
+venv
+env
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Data (rebuilt at runtime)
+vector_store/
+data/model/
+data/tokenizer/
+model/
+
+# Docs
+docs/
+*.md
+!README.md
+
+# Tests
+evaluate.py
+train.py
+ingest.py
+
+# Docker
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Env
+.env
+.env.*
+!.env.example
