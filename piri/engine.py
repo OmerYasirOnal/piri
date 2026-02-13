@@ -1,15 +1,20 @@
 """
-Piri Engine — Akıllı RAG Orkestrasyon Modülü (v3)
+Piri Engine — Akıllı RAG Orkestrasyon Modülü (v4)
 
-v3 İyileştirmeler:
-1. Relevance threshold — alakasız chunk filtresi
-2. Auto web-search fallback — bilgi yoksa internetten öğren
-3. Smart query routing — RAG → Web → Dürüst cevap
-4. Multilingual embedding + Cross-encoder reranking
-5. OpenAI API backend desteği (opsiyonel)
+v4 İyileştirmeler:
+1. MLX Hub backend — DeepSeek-R1-32B-4bit yerel inference (52+ tok/sn)
+2. Hibrit RAG — Türkçe sorular Kumru 2B, karmaşık sorular DeepSeek-R1-32B
+3. Relevance threshold — alakasız chunk filtresi
+4. Auto web-search fallback — bilgi yoksa internetten öğren
+5. Smart query routing — RAG → Web → Dürüst cevap
+6. Multilingual embedding + Cross-encoder reranking
+7. OpenAI API backend desteği (opsiyonel)
 """
 import os
 import re
+import json
+import urllib.request
+import urllib.error
 from typing import Dict, Optional, List
 from transformers import pipeline as hf_pipeline, AutoTokenizer
 
@@ -22,6 +27,13 @@ from .chunker import load_all_documents, chunk_documents
 # ─── Model Ayarları ───────────────────────────────────────────
 DEFAULT_MODEL = "Qwen/Qwen2.5-0.5B-Instruct"
 LOCAL_MODEL_PATH = "./model"
+
+# MLX Hub ayarları
+MLX_HUB_URL = os.environ.get("PIRI_MLX_URL", "http://127.0.0.1:11435")
+MLX_PRIMARY_MODEL = os.environ.get(
+    "PIRI_MLX_MODEL", "mlx-community/DeepSeek-R1-Distill-Qwen-32B-4bit"
+)
+MLX_KUMRU_MODEL = os.environ.get("PIRI_KUMRU_MODEL", "vngrs-ai/Kumru-2B")
 
 # ─── Relevance Threshold ─────────────────────────────────────
 # Reranker skoru bu değerin altındaysa bilgi tabanında alakalı içerik YOK demek.
@@ -314,6 +326,85 @@ def clean_response(text: str, aggressive: bool = False) -> str:
     return text.strip()
 
 
+# ─── MLX Hub Backend ─────────────────────────────────────────
+
+class MLXBackend:
+    """MLX-LM Hub üzerinden inference (OpenAI-uyumlu yerel API).
+
+    DeepSeek-R1-32B-4bit veya Qwen3-8B gibi güçlü modelleri
+    Apple Silicon unified memory ile yerel olarak çalıştırır.
+    """
+
+    def __init__(
+        self,
+        base_url: str = MLX_HUB_URL,
+        model: str = MLX_PRIMARY_MODEL,
+        kumru_model: str = MLX_KUMRU_MODEL,
+    ):
+        self.base_url = base_url.rstrip("/")
+        self.model = model
+        self.kumru_model = kumru_model
+        self.is_local = True
+        self.model_name = model
+        print(f"[Piri] MLX Hub backend aktif: {model} @ {base_url}")
+
+    @staticmethod
+    def is_available(base_url: str = MLX_HUB_URL) -> bool:
+        """MLX Hub'ın erişilebilir olup olmadığını kontrol et."""
+        try:
+            req = urllib.request.Request(
+                f"{base_url.rstrip('/')}/health", method="GET"
+            )
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                return data.get("status") == "ok"
+        except Exception:
+            return False
+
+    def generate(
+        self,
+        messages: list,
+        max_tokens: int = 500,
+        temperature: float = 0.3,
+        model_override: Optional[str] = None,
+    ) -> str:
+        """MLX Hub'a OpenAI-uyumlu istek gönder."""
+        use_model = model_override or self.model
+        payload = json.dumps(
+            {
+                "model": use_model,
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+            }
+        ).encode("utf-8")
+
+        try:
+            req = urllib.request.Request(
+                f"{self.base_url}/v1/chat/completions",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            # 32B model için uzun timeout (ilk yükleme 30s+ sürebilir)
+            with urllib.request.urlopen(req, timeout=180) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                content = data["choices"][0]["message"]["content"]
+                return content.strip()
+        except urllib.error.URLError as e:
+            return f"MLX Hub bağlantı hatası: {e}"
+        except Exception as e:
+            return f"MLX Hub hatası: {e}"
+
+    def generate_with_kumru(
+        self, messages: list, max_tokens: int = 300, temperature: float = 0.3
+    ) -> str:
+        """Kumru 2B modeli ile Türkçe-özel üretim."""
+        return self.generate(
+            messages, max_tokens, temperature, model_override=self.kumru_model
+        )
+
+
 # ─── OpenAI Backend ──────────────────────────────────────────
 
 class OpenAIBackend:
@@ -428,9 +519,16 @@ class PiriEngine:
         # Retriever
         self.retriever = Retriever(self.embedder, self.store, reranker=reranker)
 
-        # Backend seçimi
+        # Backend seçimi: MLX Hub > OpenAI > Local
+        mlx_url = os.environ.get("PIRI_MLX_URL", MLX_HUB_URL)
         api_key = os.environ.get("OPENAI_API_KEY", "")
-        if api_key and len(api_key) > 10:
+
+        if MLXBackend.is_available(mlx_url):
+            mlx_model = os.environ.get("PIRI_MLX_MODEL", MLX_PRIMARY_MODEL)
+            kumru = os.environ.get("PIRI_KUMRU_MODEL", MLX_KUMRU_MODEL)
+            self.backend = MLXBackend(base_url=mlx_url, model=mlx_model, kumru_model=kumru)
+            self.backend_type = "mlx"
+        elif api_key and len(api_key) > 10:
             model = openai_model or os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
             self.backend = OpenAIBackend(model=model)
             self.backend_type = "openai"
@@ -439,16 +537,16 @@ class PiriEngine:
             self.backend_type = "local"
 
         self.model_name = (
-            self.backend.model if self.backend_type == "openai"
-            else self.backend.model_name
+            self.backend.model if hasattr(self.backend, "model")
+            else getattr(self.backend, "model_name", "unknown")
         )
         self.vector_store_path = vector_store_path
-        print(f"[Piri] Engine v3 hazır. Backend: {self.backend_type}")
+        print(f"[Piri] Engine v4 hazır. Backend: {self.backend_type}")
         print(f"[Piri] İndekste {self.store.total_chunks} chunk var.")
 
     def _get_prompts(self):
         """Backend'e uygun prompt seti döndürür."""
-        if self.backend_type == "openai":
+        if self.backend_type in ("openai", "mlx"):
             return OPENAI_RAG_SYSTEM, OPENAI_SIMPLE_SYSTEM
         return LOCAL_RAG_SYSTEM, LOCAL_SIMPLE_SYSTEM
 
@@ -575,9 +673,9 @@ class PiriEngine:
         if is_relevant and retrieval["context"]:
             # Alakalı bilgi bulundu → Cevap üret
             relevant_chunks = self._filter_relevant_chunks(chunks)
-            
-            if self.backend_type == "openai":
-                # OpenAI: Tam generative RAG
+
+            if self.backend_type in ("openai", "mlx"):
+                # OpenAI veya MLX: Tam generative RAG
                 messages = [
                     {"role": "system", "content": rag_prompt},
                     {"role": "user", "content": (
@@ -586,11 +684,27 @@ class PiriEngine:
                         f"## Soru\n{question}"
                     )},
                 ]
-                raw = self.backend.generate(messages=messages, max_tokens=max_new_tokens, temperature=temperature)
+
+                # Hibrit strateji: Türkçe RAG → Kumru, karmaşık → DeepSeek
+                if self.backend_type == "mlx" and self._is_turkish_rag_query(question):
+                    print("[Piri] Türkçe RAG — Kumru 2B tercih ediliyor")
+                    raw = self.backend.generate_with_kumru(
+                        messages=messages, max_tokens=max_new_tokens, temperature=temperature
+                    )
+                    q_score = quality_check(raw, retrieval["context"], question)
+                    if q_score < 0.4:
+                        print(f"[Piri] Kumru kalite düşük ({q_score:.2f}), DeepSeek'e geçiliyor")
+                        raw = self.backend.generate(
+                            messages=messages, max_tokens=max_new_tokens, temperature=temperature
+                        )
+                else:
+                    raw = self.backend.generate(
+                        messages=messages, max_tokens=max_new_tokens, temperature=temperature
+                    )
+
                 answer = clean_response(raw)
             else:
                 # Local model: Extractive RAG — doğrudan bilgi tabanından
-                # Sadece alakalı chunk'ların metinlerini kullan
                 relevant_text = "\n\n---\n\n".join(c["text"] for c in relevant_chunks) if relevant_chunks else retrieval["context"]
                 answer = extract_best_answer(relevant_text, question)
 
@@ -617,6 +731,26 @@ class PiriEngine:
             top_k=top_k,
             method="no_info",
         )
+
+    @staticmethod
+    def _is_turkish_rag_query(question: str) -> bool:
+        """Sorunun Türkçe-ağırlıklı basit bir RAG sorgusu olup olmadığını kontrol et.
+        Kumru 2B bu tür sorularda daha etkili (Türkçe tokenizer avantajı).
+        Karmaşık muhakeme gerektiren sorular DeepSeek'e yönlendirilir.
+        """
+        q = question.lower()
+        tr_chars = set("çğıöşüÇĞİÖŞÜ")
+        has_turkish = any(c in question for c in tr_chars)
+        # Karmaşıklık sinyalleri
+        complex_signals = [
+            "karşılaştır", "analiz", "değerlendir", "neden", "açıkla",
+            "compare", "analyze", "explain", "why", "how does",
+            "plan", "strateji", "adım adım", "step by step",
+        ]
+        is_complex = any(s in q for s in complex_signals)
+        # Kısa, Türkçe, basit soru → Kumru
+        words = q.split()
+        return has_turkish and not is_complex and len(words) < 30
 
     def _auto_web_search(self, question: str) -> Optional[Dict]:
         """
@@ -783,9 +917,9 @@ class PiriEngine:
 
     def get_stats(self) -> Dict:
         """Sistem istatistikleri."""
-        return {
+        stats = {
             "engine": "Piri",
-            "version": "3.0.0",
+            "version": "4.0.0",
             "model": self.model_name,
             "backend": self.backend_type,
             "total_chunks": self.store.total_chunks,
@@ -795,3 +929,8 @@ class PiriEngine:
             "vector_store_path": self.vector_store_path,
             "context_limit_chars": 4000,
         }
+        if self.backend_type == "mlx":
+            stats["mlx_hub_url"] = MLX_HUB_URL
+            stats["mlx_primary_model"] = MLX_PRIMARY_MODEL
+            stats["mlx_kumru_model"] = MLX_KUMRU_MODEL
+        return stats
