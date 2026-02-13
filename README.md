@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-2.0.0-blue?style=flat-square" alt="Version" />
+  <img src="https://img.shields.io/badge/version-3.0.0-blue?style=flat-square" alt="Version" />
   <img src="https://img.shields.io/badge/python-3.9+-green?style=flat-square&logo=python&logoColor=white" alt="Python" />
   <img src="https://img.shields.io/badge/license-MIT-yellow?style=flat-square" alt="License" />
   <img src="https://img.shields.io/badge/RAG-FAISS+Reranking-purple?style=flat-square" alt="RAG" />
@@ -19,7 +19,7 @@
 
 <p align="center">
   <a href="#piri-nedir">Piri Nedir?</a> &middot;
-  <a href="#v20-yenilikleri">v2.0 Yenilikleri</a> &middot;
+  <a href="#v30-yenilikleri">v3.0 Yenilikleri</a> &middot;
   <a href="#kurulum">Kurulum</a> &middot;
   <a href="#hizli-baslangic">Hizli Baslangic</a> &middot;
   <a href="#api-referansi">API</a> &middot;
@@ -44,7 +44,7 @@ Piri, bir **Retrieval-Augmented Generation (RAG)** pipeline'i olarak tasarlanmis
 | **Cross-Encoder Reranking** | Iki asamali retrieval: bi-encoder &rarr; cross-encoder, dogruluk %25-40 artis |
 | **Dual Backend** | Lokal Qwen2.5-0.5B-Instruct (CPU) veya OpenAI GPT-4o-mini (API) |
 | **5 Boyutlu Kalite Olcumu** | Faithfulness, Relevance, Context Precision, Coverage, Coherence |
-| **Web Search + Learn** | DuckDuckGo entegrasyonu, bulduklarini bilgi tabanina otomatik ekler |
+| **Web Search + Learn** | Wikipedia + DuckDuckGo hibrit, sorgu genisletme (fsm→Fatih Sultan Mehmet), otomatik ogrenme |
 | **Dosya Yukleme** | Drag-and-drop ile yeni dokumanlar ekle |
 | **Web UI** | Tek sayfada RAG Query, Web Search, Learn, Evaluate, Generate |
 | **REST API** | FastAPI ile production-ready endpoint'ler |
@@ -52,7 +52,21 @@ Piri, bir **Retrieval-Augmented Generation (RAG)** pipeline'i olarak tasarlanmis
 
 ---
 
-## v2.0 Yenilikleri
+## v3.0 Yenilikleri
+
+Piri v3.0, v2.0'a gore RAG kalitesi ve web aramasi iyilestirmeleri:
+
+| Alan | v2.0 | v3.0 |
+|------|------|------|
+| **Web Search** | DuckDuckGo | Wikipedia + DuckDuckGo hibrit, TR Wikipedia oncelikli |
+| **Sorgu Genisletme** | Yok | fsm→Fatih Sultan Mehmet, kb→Knowledge Base vb. kisaltma cozumleme |
+| **Kaynak Filtreleme** | Tum chunk'lar | Sadece pozitif skorlu (relevance threshold ≥0) |
+| **Cevap Temizligi** | Temel | Metadata/URL/artifact agresif filtreleme |
+| **UI** | 6 sekmeli | Premium dark tema, glassmorphism |
+
+---
+
+## v2.0 Yenilikleri (Gecmis)
 
 Piri v2.0, v1.0'a gore kapsamli bir kalite ve yetenek guncellesidir:
 
