@@ -111,17 +111,6 @@ class WebSearchRequest(BaseModel):
 
 @app.get("/health")
 def health():
-    """Health check endpoint for Docker/orchestrator probes."""
-    return {
-        "status": "ok",
-        "engine": "Piri",
-        "version": "3.0.0",
-        "rag_ready": bool(piri_engine and piri_engine.store.total_chunks > 0),
-    }
-
-
-@app.get("/health")
-def health():
     """Health check endpoint for Docker/orchestration."""
     return {
         "status": "ok",

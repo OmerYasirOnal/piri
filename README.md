@@ -260,23 +260,23 @@ python evaluate.py --json
 
 ## Mimari
 
-Piri v2.0, iki asamali retrieval ve dual backend mimarisi kullanir:
+Piri v3.0, iki asamali retrieval ve dual backend mimarisi kullanir:
 
 ```
-                            Piri v2.0 Architecture
+                            Piri v3.0 Architecture
  ============================================================================
 
   Kullanici Sorusu
         |
         v
   +------------------+
-  |   FastAPI (v2)   |  /rag/query, /rag/web-search, /rag/upload, ...
+  |   FastAPI (v3)   |  /rag/query, /rag/web-search, /rag/upload, ...
   +--------+---------+
            |
            v
   +------------------+     +------------------+
   |    Embedder      |     |   Web Search     |
-  | multilingual-e5  |     |   (DuckDuckGo)   |
+  | multilingual-e5  |     |  (Wiki + DDG)    |
   |   (384 dim)      |     +--------+---------+
   +--------+---------+              |
            |                        v
@@ -328,7 +328,7 @@ Piri v2.0, iki asamali retrieval ve dual backend mimarisi kullanir:
 | **Reranker** | `piri/reranker.py` | `mmarco-mMiniLMv2-L12-H384-v1` cross-encoder, hybrid %70/%30 scoring |
 | **VectorStore** | `piri/vector_store.py` | FAISS IndexFlatIP, persist/load |
 | **Evaluator** | `piri/evaluator.py` | 5 boyutlu kalite degerlendirme |
-| **Web Search** | `piri/web_search.py` | DuckDuckGo entegrasyonu, sonuc derleme |
+| **Web Search** | `piri/web_search.py` | Wikipedia + DuckDuckGo hibrit arama, sorgu genisletme |
 
 ### Kullanilan Modeller
 
@@ -412,7 +412,7 @@ Piri, diger agent'lardan bagimsiz olarak da kullanilabilir &mdash; tamamen acik 
 
 ```
 piri/
-├── main.py                 # FastAPI uygulamasi (v2.0.0)
+├── main.py                 # FastAPI uygulamasi (v3.0.0)
 ├── train.py                # Fine-tuning scripti
 ├── ingest.py               # Knowledge base indeksleme
 ├── evaluate.py             # Kalite degerlendirme
@@ -421,7 +421,7 @@ piri/
 ├── .env.example            # Ortam degiskenleri sablonu
 ├── LICENSE                 # MIT Lisansi
 ├── piri/                   # Core paket
-│   ├── __init__.py         # v2.0.0, PiriEngine export
+│   ├── __init__.py         # v3.0.0, PiriEngine export
 │   ├── engine.py           # RAG Engine (dual backend, prompt eng.)
 │   ├── chunker.py          # Dokuman chunking (cumle-aware)
 │   ├── embedder.py         # Multilingual E5 embedding (384d)
@@ -429,7 +429,7 @@ piri/
 │   ├── reranker.py         # Cross-encoder reranking (hybrid 70/30)
 │   ├── vector_store.py     # FAISS vektor store (persist/load)
 │   ├── evaluator.py        # 5 boyutlu kalite degerlendirme
-│   └── web_search.py       # DuckDuckGo web arama entegrasyonu
+│   └── web_search.py       # Wikipedia + DuckDuckGo hibrit web arama
 ├── knowledge_base/         # Ornek bilgi tabani
 │   ├── agent_architectures.md
 │   ├── ai_frameworks.md
@@ -488,6 +488,6 @@ MIT License &mdash; detaylar icin [LICENSE](LICENSE) dosyasina bakin.
 ---
 
 <p align="center">
-  <strong>Piri v2.0</strong> &mdash; AKIS Platform tarafindan gelistirilmistir.<br>
+  <strong>Piri v3.0</strong> &mdash; AKIS Platform tarafindan gelistirilmistir.<br>
   <em>"Haritasi olmayana her ruzgar ters eser." &mdash; Piri Reis</em>
 </p>

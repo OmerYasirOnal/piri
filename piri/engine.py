@@ -387,7 +387,7 @@ class LocalBackend:
 
 class PiriEngine:
     """
-    Piri RAG Engine v2 — Retrieve → Rerank → Augment → Generate → Clean
+    Piri RAG Engine v3 — Retrieve → Rerank → Augment → Generate → Clean
     """
 
     def __init__(
@@ -443,7 +443,7 @@ class PiriEngine:
             else self.backend.model_name
         )
         self.vector_store_path = vector_store_path
-        print(f"[Piri] Engine v2 hazır. Backend: {self.backend_type}")
+        print(f"[Piri] Engine v3 hazır. Backend: {self.backend_type}")
         print(f"[Piri] İndekste {self.store.total_chunks} chunk var.")
 
     def _get_prompts(self):
